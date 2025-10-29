@@ -1,3 +1,10 @@
+/*
+SMToCOO (address: String): (RDD[Int], RDD[Int], RDD[Double])
+SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double])
+SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double])
+这三个方法包含了读取CSV文件并转换成COO，CSC，CSR这三种保存形式。结构会被保存在三个PDD中返回。
+运行PDD时会输出很多红色日志，目前我还没找到把它关闭的方法。
+*/
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import scala.io.Source
