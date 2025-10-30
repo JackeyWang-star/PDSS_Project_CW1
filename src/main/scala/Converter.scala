@@ -1,3 +1,16 @@
+/*
+SMToCOO (address: String): (RDD[Int], RDD[Int], RDD[Double])
+SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double])
+SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double])
+这三个方法包含了读取CSV文件并转换成COO，CSC，CSR这三种保存形式。结构会被保存在三个PDD中返回。
+
+def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double])
+这个方法是转换成SELL格式的方法，但是这个版本保存出来的结果并不正确，现在会按照row的先后顺序保存数据，但实际上应该按照col的顺序
+
+所有格式转换的方法已经被封装进Converter类中，使用时需要先创建Converter实例再调用方法。
+
+ */
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import scala.io.Source
@@ -155,7 +168,31 @@ class Converter {
     (sc.parallelize(sliceNum.reverse), sc.parallelize(colIdices), sc.parallelize(values))
   }
 
-  //  def ReadSV (address: String): (RDD[Int], RDD[Double]) = {
-  //
-  //  }
+    def ReadSV (address: String): (RDD[Int], RDD[Double]) = {
+      /*
+      Idices:    ,List(1, 4, 5, 9)
+      values:    ,List(1, 4, 7, 4)
+       */
+      val source = Source.fromFile(address)
+      val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
+      val transposed = matrix.transpose
+      val numOFrows = matrix.length
+
+      var values = List[Double]()
+      var Idices = List[Int]()
+
+      if (numOFrows != 1){
+        println("The input is not a vector.")
+        return (sc.parallelize(Idices), sc.parallelize(values.reverse))
+      }
+
+      val nz = transposed.zipWithIndex.filter(a => a._1.exists(_ != 0))
+      values = values ++ (nz.map(_._1).flatten)
+      Idices = Idices ++ (nz.map(_._2))
+
+      println("Col:       ", Idices)
+      println("Value:     ", values)
+
+      (sc.parallelize(Idices), sc.parallelize(values.reverse))
+    }
 }
