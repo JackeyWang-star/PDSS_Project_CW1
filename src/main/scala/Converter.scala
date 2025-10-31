@@ -22,7 +22,7 @@ class Converter {
     .set("spark.ui.enabled", "false")
   val sc: SparkContext = new SparkContext(conf)
 
-  def SMToCOO (address: String): (RDD[Int], RDD[Int], RDD[Double]) = {
+  def SMToCOO (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     Row:       ,List(0, 0, 1, 3)
     Col:       ,List(0, 2, 1, 3)
@@ -31,9 +31,12 @@ class Converter {
     var rowIndices = List[Int]()
     var colIndices = List[Int]()
     var values = List[Double]()
+    var numOFrow = 0
+    var numOFcol = 0
     val source = Source.fromFile(address)
     try {
       val lines = source.getLines().toList
+      numOFrow = lines.length
 
       for ((line, i) <- lines.zipWithIndex) {
         val entries = line.replace("\uFEFF", "").split(",").map(_.trim.toDouble)
@@ -44,6 +47,7 @@ class Converter {
             values ::= v
           }
         }
+        numOFcol = entries.length
       }
     } finally {
       source.close()
@@ -51,11 +55,11 @@ class Converter {
     println("Row:       ", rowIndices.reverse)
     println("Col:       ", colIndices.reverse)
     println("Value:     ", values.reverse)
-    (sc.parallelize(rowIndices.reverse), sc.parallelize(colIndices.reverse), sc.parallelize(values.reverse))
+    (sc.parallelize(rowIndices.reverse), sc.parallelize(colIndices.reverse), sc.parallelize(values.reverse), (numOFrow, numOFcol))
 
   }
 
-  def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double]) = {
+  def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     Row:       ,List(0, 1, 0, 3)
     ColOffset: ,List(0, 1, 2, 3, 4)
@@ -88,10 +92,10 @@ class Converter {
     println("Row:       ", rowIndices.reverse)
     println("Col:       ", colOffset.reverse)
     println("Value:     ", values.reverse)
-    (sc.parallelize(rowIndices.reverse), sc.parallelize(colOffset.reverse), sc.parallelize(values.reverse))
+    (sc.parallelize(rowIndices.reverse), sc.parallelize(colOffset.reverse), sc.parallelize(values.reverse), (numOFrows, numOFcol))
   }
 
-  def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double]) = {
+  def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     RowOffset: ,List(0, 2, 3, 3, 4)
     Col:       ,List(0, 2, 1, 3)
@@ -102,9 +106,12 @@ class Converter {
     var values = List[Double]()
     var indices: Int = 0
     val source = Source.fromFile(address)
+    var numOFrow = 0
+    var numOFcol = 0
 
     try {
       val lines = source.getLines().toList
+      numOFrow = lines.length
 
       for ((line, i) <- lines.zipWithIndex) {
         rowOffset ::= indices
@@ -116,6 +123,7 @@ class Converter {
             indices += 1
           }
         }
+        numOFcol = entries.length
       }
       rowOffset ::= indices
     } finally {
@@ -124,10 +132,10 @@ class Converter {
     println("Row:       ", rowOffset.reverse)
     println("Col:       ", colIndices.reverse)
     println("Value:     ", values.reverse)
-    (sc.parallelize(rowOffset.reverse), sc.parallelize(colIndices.reverse), sc.parallelize(values.reverse))
+    (sc.parallelize(rowOffset.reverse), sc.parallelize(colIndices.reverse), sc.parallelize(values.reverse), (numOFrow, numOFcol))
   }
 
-  def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double]) = {
+  def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     sliceHigh = 2
     sliceNum:  ,List(0, 4, 6)
@@ -165,34 +173,37 @@ class Converter {
     println("Col:       ", colIdices)
     println("Value:     ", values)
 
-    (sc.parallelize(sliceNum.reverse), sc.parallelize(colIdices), sc.parallelize(values))
+    (sc.parallelize(sliceNum.reverse), sc.parallelize(colIdices), sc.parallelize(values), (numOFrows, numOFcol))
   }
 
-    def ReadSV (address: String): (RDD[Int], RDD[Double]) = {
-      /*
-      Idices:    ,List(1, 4, 5, 9)
-      values:    ,List(1, 4, 7, 4)
-       */
-      val source = Source.fromFile(address)
-      val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
-      val transposed = matrix.transpose
-      val numOFrows = matrix.length
+  def ReadSV (address: String): (RDD[Int], RDD[Double], Int) = {
+    /*
+    Idices:    ,List(1, 4, 5, 9)
+    values:    ,List(1, 4, 7, 4)
+    */
+    val source = Source.fromFile(address)
+    val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
+    val transposed = matrix.transpose
+    val numOFrows = matrix.length
+    val numOFcols = matrix(0).length
+    var values = List[Double]()
+    var Idices = List[Int]()
 
-      var values = List[Double]()
-      var Idices = List[Int]()
-
-      if (numOFrows != 1){
-        println("The input is not a vector.")
-        return (sc.parallelize(Idices), sc.parallelize(values.reverse))
-      }
-
-      val nz = transposed.zipWithIndex.filter(a => a._1.exists(_ != 0))
-      values = values ++ (nz.map(_._1).flatten)
-      Idices = Idices ++ (nz.map(_._2))
-
-      println("Col:       ", Idices)
-      println("Value:     ", values)
-
-      (sc.parallelize(Idices), sc.parallelize(values.reverse))
+    if (numOFrows != 1){
+      println("The input is not a vector.")
+      return (sc.parallelize(Idices), sc.parallelize(values.reverse), numOFcols)
     }
+
+    val nz = transposed.zipWithIndex.filter(a => a._1.exists(_ != 0))
+    values = values ++ (nz.flatMap(_._1))
+    Idices = Idices ++ (nz.map(_._2))
+
+    println("Col:       ", Idices)
+    println("Value:     ", values)
+    (sc.parallelize(Idices), sc.parallelize(values.reverse), numOFcols)
+  }
+
+//  def ReadDV (address: String): (RDD[Double], Int) = {
+//
+//  }
 }
