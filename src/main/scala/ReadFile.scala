@@ -63,15 +63,44 @@ object ReadCSV {
 //    println("The size of SM is:")
 //    println(size4)
 //
-//    val filePath2 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\SVConverter_test.csv"
-//    println("The file path is: " + filePath2)
-//    val (ind, value, size) = Con.ReadSV(filePath2)
-//    println("idices:  ")
-//    ind.toLocalIterator.foreach(println)
-//    println("value:  ")
-//    value.toLocalIterator.foreach(println)
-//    println("The size of SV is:")
-//    println(size)
-
+    //测试SV读取
+    val filePath2 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\SVConverter_test.csv"
+    println("The file path is: " + filePath2)
+    val (ind, value, size) = Con.ReadSV(filePath2)
+    println("idices:  ")
+    ind.toLocalIterator.foreach{
+      indx =>
+        println(indx)
+    }
+    println("value:  ")
+    value.toLocalIterator.foreach{
+      valus =>
+        println(valus)
+    }
+    println("The size of SV is:")
+    println(size)
+//
+//    val filePath3 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\DVConverter_test.csv"
+//    println("The file path is: " + filePath3)
+//
+//    //测试DV读取
+//    val (value5, size5) = Con.ReadDV(filePath3)
+//    println("The value in the vector:")
+//    value5.toLocalIterator.foreach(println)
+//    println("The size of the vector is:")
+//    println(size5)
+//
+//    val filePath4 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\DMConverter_test.csv"
+//    println("The file path is: " + filePath4)
+//
+//    //测试DM读取
+//    val (value6, size6) = Con.ReadDM(filePath4)
+//    println("The value in the vector:")
+//    value6.toLocalIterator.foreach{
+//      line =>
+//        println(line.mkString(","))
+//    }
+//    println("The size of the vector is:")
+//    println(size6)
   }
 }

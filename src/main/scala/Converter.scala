@@ -181,29 +181,51 @@ class Converter {
     Idices:    ,List(1, 4, 5, 9)
     values:    ,List(1, 4, 7, 4)
     */
-    val source = Source.fromFile(address)
-    val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
-    val transposed = matrix.transpose
-    val numOFrows = matrix.length
-    val numOFcols = matrix(0).length
-    var values = List[Double]()
-    var Idices = List[Int]()
-
-    if (numOFrows != 1){
+    val vector = sc.textFile(address)
+    val numOFrow = vector.count()
+    val numOFcol = vector.first().split(",").length
+    if (numOFrow != 1){
       println("The input is not a vector.")
-      return (sc.parallelize(Idices), sc.parallelize(values.reverse), numOFcols)
+      return (sc.parallelize(List.empty[Int]), sc.parallelize(List.empty[Double]), 0)
     }
-
-    val nz = transposed.zipWithIndex.filter(a => a._1.exists(_ != 0))
-    values = values ++ (nz.flatMap(_._1))
-    Idices = Idices ++ (nz.map(_._2))
-
-    println("Col:       ", Idices)
-    println("Value:     ", values)
-    (sc.parallelize(Idices), sc.parallelize(values.reverse), numOFcols)
+    val vectorArr = vector.map{
+      values =>
+        val ele = values.split(",").map(_.toDouble)
+        val nonele = for {
+          index <- ele.indices
+          value = ele(index)
+          if value != 0.0
+        } yield (index, value)
+        nonele
+    }.flatMap(identity)
+    ((vectorArr.map(_._1)), (vectorArr.map(_._2)), numOFcol)
   }
 
-//  def ReadDV (address: String): (RDD[Double], Int) = {
-//
-//  }
+  def ReadDV (address: String): (RDD[Double], Int) = {
+    val vector = sc.textFile(address)
+    val numOFrow = vector.count()
+    if (numOFrow != 1){
+      println("The input is not a vector.")
+      return (sc.parallelize(List.empty[Double]), 0)
+    }
+    val vectorArr = vector.first().split(",").map(_.toDouble)
+    val vectorRDD = sc.parallelize(vectorArr)
+    val numOFcol = vectorArr.length
+    (vectorRDD, numOFcol)
+  }
+
+  def ReadDM (address: String): (RDD[Array[Double]], (Int, Int)) = {
+    val matrix = sc.textFile(address)
+    val numOFrow = matrix.count().toInt
+    if (numOFrow == 0) {
+      println("The input matrix is empty.")
+      return (sc.parallelize(Seq.empty[Array[Double]]),(0, 0))
+    }
+    val RDDMatrix = matrix.map{
+      line =>
+        line.split(",").map(_.toDouble)
+    }
+    val numOFcol = RDDMatrix.first().length
+    (RDDMatrix, (numOFrow,numOFcol))
+  }
 }
