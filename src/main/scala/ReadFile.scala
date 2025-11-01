@@ -11,8 +11,8 @@ object ReadCSV {
 
     val Con = new Converter
 
-    val filePath1 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\SMConverter_test.csv"
-    println("The file path is: " + filePath1)
+//    val filePath1 = "Data/SMConverter_test.csv"
+//    println("The file path is: " + filePath1)
 //
 //    //测试COO转换
 //    val (row1, col1, value1, size1) = Con.SMToCOO(filePath1)
@@ -52,20 +52,20 @@ object ReadCSV {
 //    println(size2)
 //
 //    //测试CSC转换
-    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
-    println("Read the Sparse matrix in file and saved in CSC form:")
-    println("row:   ")
-    row3.toLocalIterator.foreach(println)
-    println("colOffset:   ")
-    col3.toLocalIterator.foreach(println)
-    println("value:  ")
-    value3.toLocalIterator.foreach(println)
-    println("The size of SM is:")
-    println(size3)
+//    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
+//    println("Read the Sparse matrix in file and saved in CSC form:")
+//    println("row:   ")
+//    row3.toLocalIterator.foreach(println)
+//    println("colOffset:   ")
+//    col3.toLocalIterator.foreach(println)
+//    println("value:  ")
+//    value3.toLocalIterator.foreach(println)
+//    println("The size of SM is:")
+//    println(size3)
 //
 //
 //    //测试SV读取
-//    val filePath2 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\SVConverter_test.csv"
+//    val filePath2 = "Data/SVConverter_test.csv"
 //    println("The file path is: " + filePath2)
 //    val (ind, value, size) = Con.ReadSV(filePath2)
 //    val long = ind.count().toInt
@@ -79,7 +79,7 @@ object ReadCSV {
 //    println(size)
 //
 //    //测试DV读取
-//    val filePath3 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\DVConverter_test.csv"
+//    val filePath3 = "Data/DVConverter_test.csv"
 //    println("The file path is: " + filePath3)
 //    val (value5, size5) = Con.ReadDV(filePath3)
 //    println("The value in the vector:")
@@ -90,7 +90,7 @@ object ReadCSV {
 //    println(size5)
 //
 //    //测试DM读取
-//    val filePath4 = "D:\\EdinburghUniversity\\Git_Project\\PDSS_CW1\\Data\\DMConverter_test.csv"
+//    val filePath4 = "Data/DMConverter_test.csv"
 //    println("The file path is: " + filePath4)
 //    val (value6, size6) = Con.ReadDM(filePath4)
 //    println("The value in the vector:")
