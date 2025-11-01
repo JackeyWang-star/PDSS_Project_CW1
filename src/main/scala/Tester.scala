@@ -3,13 +3,15 @@
 运行前需要注意JAVA CDK的版本，最好使用JAVA8或者JAVA11
 */
 
-object ReadCSV {
+object Tester {
   def main(args: Array[String]): Unit = {
     // Set log level
-//    org.apache.log4j.Logger.getLogger("org").setLevel(org.apache.log4j.Level.ERROR)
-//    org.apache.log4j.Logger.getLogger("akka").setLevel(org.apache.log4j.Level.ERROR)
+    org.apache.log4j.Logger.getLogger("org").setLevel(org.apache.log4j.Level.ERROR)
+    org.apache.log4j.Logger.getLogger("akka").setLevel(org.apache.log4j.Level.ERROR)
 
     val Con = new Converter
+    val Cal = new Calculator
+    val sc = Con.sc
 
 //    val filePath1 = "Data/SMConverter_test.csv"
 //    println("The file path is: " + filePath1)
@@ -102,5 +104,17 @@ object ReadCSV {
 //    }
 //    println("The size of the vector is:")
 //    println(size6)
+//
+//    //测试稀疏矩阵于稠密向量的乘法
+//    val (rowOffset, colIndices, values, shape) = Con.SMToCSR("Data/SMConverter_test.csv")
+//    val (vector, n) = Con.ReadDV("Data/DVConverter_test.csv")
+//    val result = Cal.csrMultiply(rowOffset, colIndices, values, vector, shape)(sc)
+//    println("Result Vector:")
+//    val num = result.count().toInt
+//    val List = result.take(num).toList
+//    List.foreach(println)
+
+
+    sc.stop()
   }
 }

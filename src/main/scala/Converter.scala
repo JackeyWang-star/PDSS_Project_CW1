@@ -56,8 +56,19 @@ class Converter {
     Value:     ,List(4, 7, 9, 5)
      */
     val (row, col, value, size) = SMToCOO(address)
-    val cooRDD = row.zip(col).zip(value).map{
-      case ((r, c), v) => (r, c, v)
+    val indexedRow = row.zipWithIndex().map{
+      case (r, i) => (i, r)
+    }
+    val indexedcol = col.zipWithIndex().map{
+      case (c, i) => (i, c)
+    }
+    val indexedValue = value.zipWithIndex().map{
+      case (v, i) => (i, v)
+    }
+    val RowCol = indexedRow.join(indexedcol)
+    val RowColValue = RowCol.join(indexedValue)
+    val cooRDD = RowColValue.map{
+      case (_,((r, c), v)) => (r, c, v)
     }
     val sortedRDD = cooRDD.sortBy{
       case (r, c, v) => (c, r)
