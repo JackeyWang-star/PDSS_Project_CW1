@@ -28,71 +28,60 @@ class Converter {
     Col:       ,List(0, 2, 1, 3)
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
-    var rowIndices = List[Int]()
-    var colIndices = List[Int]()
-    var values = List[Double]()
-    var numOFrow = 0
-    var numOFcol = 0
-    val source = Source.fromFile(address)
-    try {
-      val lines = source.getLines().toList
-      numOFrow = lines.length
-
-      for ((line, i) <- lines.zipWithIndex) {
-        val entries = line.replace("\uFEFF", "").split(",").map(_.trim.toDouble)
-        for ((v, j) <- entries.zipWithIndex) {
-          if (v != 0) {
-            rowIndices ::= i
-            colIndices ::= j
-            values ::= v
-          }
-        }
-        numOFcol = entries.length
-      }
-    } finally {
-      source.close()
+    val matrix = sc.textFile(address)
+    val numOFrow = matrix.count().toInt
+    val numOFcol = matrix.first().split(",").length
+    val indexMatrix = matrix.zipWithIndex().map{
+      case (line, rowindex) => (line, rowindex.toInt)
     }
-    println("Row:       ", rowIndices.reverse)
-    println("Col:       ", colIndices.reverse)
-    println("Value:     ", values.reverse)
-    (sc.parallelize(rowIndices.reverse), sc.parallelize(colIndices.reverse), sc.parallelize(values.reverse), (numOFrow, numOFcol))
+    val RDDvalue = indexMatrix.flatMap{
+      case (line,rowindex) =>
+        val ele = line.split(",").map(_.toDouble)
+        ele.zipWithIndex.flatMap { case (value, colIndex) =>
+          if (value != 0.0) Some((rowindex, colIndex, value))
+          else None
+        }
+    }
+    val rowIndex = RDDvalue.map(_._1)
+    val colIndex = RDDvalue.map(_._2)
+    val values = RDDvalue.map(_._3)
 
+    (rowIndex, colIndex, values, (numOFrow, numOFcol))
   }
 
   def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     Row:       ,List(0, 1, 0, 3)
-    ColOffset: ,List(0, 1, 2, 3, 4)
+    ColOffset: ,List(0, 1, 2, 3, 4, 4)
     Value:     ,List(4, 7, 9, 5)
      */
-    var rowIndices = List[Int]()
-    var colOffset = List[Int]()
-    var values = List[Double]()
-    var indices: Int = 0
-    val source = Source.fromFile(address)
-    val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
-
-    val numOFrows = matrix.length
-    val numOFcol = matrix(0).length
-    try {
-      for (i <- 0 until  numOFcol){
-        colOffset ::= indices
-        for (j <- 0 until numOFrows){
-          if (matrix(j)(i) != 0){
-            indices += 1
-            rowIndices ::= j
-            values ::= matrix(j)(i)
-          }
-        }
-      }
-      colOffset ::= indices
-    } finally {
-      source.close()
+    val (row, col, value, size) = SMToCOO(address)
+    val cooRDD = row.zip(col).zip(value).map{
+      case ((r, c), v) => (r, c, v)
     }
-    println("Row:       ", rowIndices.reverse)
-    println("Col:       ", colOffset.reverse)
-    println("Value:     ", values.reverse)
-    (sc.parallelize(rowIndices.reverse), sc.parallelize(colOffset.reverse), sc.parallelize(values.reverse), (numOFrows, numOFcol))
+    val sortedRDD = cooRDD.sortBy{
+      case (r, c, v) => (c, r)
+    }
+
+    val rowIndexRDD = sortedRDD.map(_._1)
+    val valueRDD = sortedRDD.map(_._3)
+    val CList = col.take(size._2).toList
+    val countMap = CList
+      .groupBy(identity)
+      .map { case (key, value) => (key, value.size) }
+
+    val numList: List[Int] = (0 until size._2).map { index =>
+      countMap.getOrElse(index, 0)
+    }.toList
+
+    val resultList = (0 :: numList).foldLeft((List.empty[Int], 0)){
+      case ((offset, sum), current) =>
+        val newsum = sum + current
+        (offset :+ newsum, newsum)
+    }._1
+
+    val colOffset = sc.parallelize(resultList)
+    (rowIndexRDD, colOffset, valueRDD, size)
   }
 
   def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
@@ -101,80 +90,66 @@ class Converter {
     Col:       ,List(0, 2, 1, 3)
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
-    var rowOffset = List[Int]()
-    var colIndices = List[Int]()
-    var values = List[Double]()
-    var indices: Int = 0
-    val source = Source.fromFile(address)
-    var numOFrow = 0
-    var numOFcol = 0
+    val (row, col, value, size) = SMToCOO(address)
+    val RList = row.take(size._1).toList
+    val countMap = RList
+      .groupBy(identity)
+      .map { case (key, value) => (key, value.size) }
 
-    try {
-      val lines = source.getLines().toList
-      numOFrow = lines.length
+    val numList: List[Int] = (0 until size._1).map { index =>
+      countMap.getOrElse(index, 0)
+    }.toList
 
-      for ((line, i) <- lines.zipWithIndex) {
-        rowOffset ::= indices
-        val entries = line.replace("\uFEFF", "").split(",").map(_.trim.toDouble)
-        for ((v, j) <- entries.zipWithIndex) {
-          if (v != 0) {
-            colIndices ::= j
-            values ::= v
-            indices += 1
-          }
-        }
-        numOFcol = entries.length
-      }
-      rowOffset ::= indices
-    } finally {
-      source.close()
-    }
-    println("Row:       ", rowOffset.reverse)
-    println("Col:       ", colIndices.reverse)
-    println("Value:     ", values.reverse)
-    (sc.parallelize(rowOffset.reverse), sc.parallelize(colIndices.reverse), sc.parallelize(values.reverse), (numOFrow, numOFcol))
+    val resultList = (0 :: numList).foldLeft((List.empty[Int], 0)){
+      case ((offset, sum), current) =>
+        val newsum = sum + current
+        (offset :+ newsum, newsum)
+    }._1
+
+    val rowOffset = sc.parallelize(resultList)
+    (rowOffset, col, value, size)
   }
 
-  def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
-    /*
-    sliceHigh = 2
-    sliceNum:  ,List(0, 4, 6)
-    Col:       ,List(0, 1, 2,-1,-1, 3)
-    Value:     ,List(4, 7, 9, *, *, 5)
-     */
-    val source = Source.fromFile(address)
-    val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
-
-    val numOFrows = matrix.length
-    val numOFcol = matrix(0).length
-    val numOFslice = (numOFrows + sliceHigh - 1) / sliceHigh
-
-    var values = List[Double]()
-    var colIdices = List[Int]()
-    var sliceNum = List[Int]()
-    sliceNum ::= 0
-
-    for (i <- 0 until numOFslice){
-      val start = i * sliceHigh
-      val end = Math.min(start + sliceHigh, numOFrows)
-      val slice = matrix.slice(start, end)
-      val MaxWith = slice.map(_.count(_ != 0)).max
-
-      for (j <- slice){
-        val nz = j.zipWithIndex.filter(_._1 != 0)
-        val res = MaxWith - nz.length
-        values = values ++ (nz.map(_._1) ++ List.fill(res)(0.0))
-        colIdices = colIdices ++ (nz.map(_._2) ++ List.fill(res)(-1))
-      }
-      sliceNum ::= values.length
-    }
-
-    println("Slice:     ", sliceNum.reverse)
-    println("Col:       ", colIdices)
-    println("Value:     ", values)
-
-    (sc.parallelize(sliceNum.reverse), sc.parallelize(colIdices), sc.parallelize(values), (numOFrows, numOFcol))
-  }
+//  def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+//    /*
+//    sliceHigh = 2
+//    sliceNum:  ,List(0, 4, 6)
+//    Col:       ,List(0, 1, 2,-1,-1, 3)
+//    Value:     ,List(4, 7, 9, *, *, 5)
+//     */
+//    val source = Source.fromFile(address)
+//    val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
+//
+//    val numOFrows = matrix.length
+//    val numOFcol = matrix(0).length
+//    val numOFslice = (numOFrows + sliceHigh - 1) / sliceHigh
+//
+//    var values = List[Double]()
+//    var colIdices = List[Int]()
+//    var sliceNum = List[Int]()
+//    sliceNum ::= 0
+//
+//    for (i <- 0 until numOFslice){
+//      val start = i * sliceHigh
+//      val end = Math.min(start + sliceHigh, numOFrows)
+//      val slice = matrix.slice(start, end)
+//      val MaxWith = slice.map(_.count(_ != 0)).max
+//
+//      for (j <- slice){
+//        val nz = j.zipWithIndex.filter(_._1 != 0)
+//        val res = MaxWith - nz.length
+//        values = values ++ (nz.map(_._1) ++ List.fill(res)(0.0))
+//        colIdices = colIdices ++ (nz.map(_._2) ++ List.fill(res)(-1))
+//      }
+//      sliceNum ::= values.length
+//    }
+//
+//    println("Slice:     ", sliceNum.reverse)
+//    println("Col:       ", colIdices)
+//    println("Value:     ", values)
+//
+//    (sc.parallelize(sliceNum.reverse), sc.parallelize(colIdices), sc.parallelize(values), (numOFrows, numOFcol))
+//  }
 
   def ReadSV (address: String): (RDD[Int], RDD[Double], Int) = {
     /*
