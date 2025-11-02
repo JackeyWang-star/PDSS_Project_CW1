@@ -76,7 +76,7 @@ class Converter {
 
     val rowIndexRDD = sortedRDD.map(_._1)
     val valueRDD = sortedRDD.map(_._3)
-    val CList = col.take(size._2).toList
+    val CList = col.take(col.count().toInt).toList
     val countMap = CList
       .groupBy(identity)
       .map { case (key, value) => (key, value.size) }

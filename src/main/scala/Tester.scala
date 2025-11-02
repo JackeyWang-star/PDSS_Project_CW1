@@ -13,23 +13,24 @@ object Tester {
     val Cal = new Calculator
     val sc = Con.sc
 
+    val filePath1 = "Data/tesetCSC.csv"
 //    val filePath1 = "Data/SMConverter_test.csv"
-//    println("The file path is: " + filePath1)
+    println("The file path is: " + filePath1)
 //
 //    //测试COO转换
 //    val (row1, col1, value1, size1) = Con.SMToCOO(filePath1)
 //    println("Read the Sparse matrix in file and saved in COO form:")
-//    println("row:   ")
-//    val Rnum1 = row1.count().toInt
-//    val RList1 = row1.take(Rnum1).toList
-//    RList1.foreach(println)
-//    println("col:   ")
-//    val Cnum1 = col1.count().toInt
-//    val CList1 = col1.take(Cnum1).toList
-//    CList1.foreach(println)
-//    println("value:  ")
 //    val Vnum1 = value1.count().toInt
 //    val VList1 = value1.take(Vnum1).toList
+//    val Rnum1 = row1.count().toInt
+//    val RList1 = row1.take(Rnum1).toList
+//    val Cnum1 = col1.count().toInt
+//    val CList1 = col1.take(Cnum1).toList
+//    println("row:   ")
+//    RList1.foreach(println)
+//    println("col:   ")
+//    CList1.foreach(println)
+//    println("value:  ")
 //    VList1.foreach(println)
 //    println("The size of SM is:")
 //    println(size1)
@@ -54,16 +55,22 @@ object Tester {
 //    println(size2)
 //
 //    //测试CSC转换
-//    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
-//    println("Read the Sparse matrix in file and saved in CSC form:")
-//    println("row:   ")
-//    row3.toLocalIterator.foreach(println)
-//    println("colOffset:   ")
-//    col3.toLocalIterator.foreach(println)
-//    println("value:  ")
-//    value3.toLocalIterator.foreach(println)
-//    println("The size of SM is:")
-//    println(size3)
+    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
+    println("Read the Sparse matrix in file and saved in CSC form:")
+    val Vnum3 = value3.count().toInt
+    val VList3 = value3.take(Vnum3).toList
+    val Rnum3 = row3.count().toInt
+    val RList3 = row3.take(Rnum3).toList
+    val Cnum3 = col3.count().toInt
+    val CList3 = col3.take(Cnum3).toList
+    println("row:   ")
+    RList3.foreach(println)
+    println("colOffset:   ")
+    CList3.foreach(println)
+    println("value:  ")
+    VList3.foreach(println)
+    println("The size of SM is:")
+    println(size3)
 //
 //
 //    //测试SV读取
