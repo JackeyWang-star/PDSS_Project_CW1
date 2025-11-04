@@ -13,9 +13,9 @@ object Tester {
     val Cal = new Calculator
     val sc = Con.sc
 
-    val filePath1 = "Data/tesetCSC.csv"
+//    val filePath1 = "Data/tesetCSC.csv"
 //    val filePath1 = "Data/SMConverter_test.csv"
-    println("The file path is: " + filePath1)
+//    println("The file path is: " + filePath1)
 //
 //    //测试COO转换
 //    val (row1, col1, value1, size1) = Con.SMToCOO(filePath1)
@@ -55,22 +55,22 @@ object Tester {
 //    println(size2)
 //
 //    //测试CSC转换
-    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
-    println("Read the Sparse matrix in file and saved in CSC form:")
-    val Vnum3 = value3.count().toInt
-    val VList3 = value3.take(Vnum3).toList
-    val Rnum3 = row3.count().toInt
-    val RList3 = row3.take(Rnum3).toList
-    val Cnum3 = col3.count().toInt
-    val CList3 = col3.take(Cnum3).toList
-    println("row:   ")
-    RList3.foreach(println)
-    println("colOffset:   ")
-    CList3.foreach(println)
-    println("value:  ")
-    VList3.foreach(println)
-    println("The size of SM is:")
-    println(size3)
+//    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
+//    println("Read the Sparse matrix in file and saved in CSC form:")
+//    val Vnum3 = value3.count().toInt
+//    val VList3 = value3.take(Vnum3).toList
+//    val Rnum3 = row3.count().toInt
+//    val RList3 = row3.take(Rnum3).toList
+//    val Cnum3 = col3.count().toInt
+//    val CList3 = col3.take(Cnum3).toList
+//    println("row:   ")
+//    RList3.foreach(println)
+//    println("colOffset:   ")
+//    CList3.foreach(println)
+//    println("value:  ")
+//    VList3.foreach(println)
+//    println("The size of SM is:")
+//    println(size3)
 //
 //
 //    //测试SV读取
@@ -112,7 +112,7 @@ object Tester {
 //    println("The size of the vector is:")
 //    println(size6)
 //
-//    //测试稀疏矩阵于稠密向量的乘法
+//    //测试稀疏矩阵与稠密向量的乘法
 //    val (rowOffset, colIndices, values, shape) = Con.SMToCSR("Data/SMConverter_test.csv")
 //    val (vector, n) = Con.ReadDV("Data/DVConverter_test.csv")
 //    val result = Cal.csrMultiply(rowOffset, colIndices, values, vector, shape)(sc)
@@ -120,8 +120,35 @@ object Tester {
 //    val num = result.count().toInt
 //    val List = result.take(num).toList
 //    List.foreach(println)
-
-
-    sc.stop()
+//
+//    //测试稀疏矩阵与稀疏向量的乘法
+//    val (rowOffset2, colIndices2, values2, shape2) = Con.SMToCSR("Data/SMConverter_test.csv")
+//    val (svIndices, svValues, vecLength) = Con.ReadSV("Data/SVConverter_test.csv")
+//    val result2 = Cal.SpM_SpSV(rowOffset2, colIndices2, values2, svIndices, svValues, shape2, vecLength)(sc)
+//    val num2 = result2.count().toInt
+//    val List2 = result2.take(num2).toList
+//    sc.stop()
+//    println("Result Vector:")
+//    List2.foreach(println)
+//
+//    //测试稀疏矩阵和稀疏矩阵的乘法
+//    val (rowOffset3, colIndices3, values3, shape3) = Con.SMToCSR("Data/SMConverter_test.csv")
+//    val (row, colOffset, value4, shape4) = Con.SMToCSC("Data/SMSM_test.csv")
+//    val result3 = Cal.SpM_SpM(rowOffset3, colIndices3, values3, colOffset, row, value4,shape3, shape4)(sc)
+//    val num3 = result3.count().toInt
+//    val List3 = result3.take(num3).toList
+//    sc.stop()
+//    println("Result Matrix in COO:")
+//    List3.foreach(println)
+//
+//    //测试稀疏矩阵和稠密矩阵的乘法
+//    val (rowOffset4, colIndices4, values4, shape4) = Con.SMToCSR("Data/SMConverter_test.csv")
+//    val (matrix, shape5) = Con.ReadDM("Data/SMDM_test.csv")
+//    val result4 = Cal.SpM_SpDM(rowOffset4, colIndices4, values4, matrix, shape4, shape5)(sc)
+//    val num4 = result4.count().toInt
+//    val List4 = result4.take(num4).toList
+//    sc.stop()
+//    println("Result Matrix in COO:")
+//    List4.foreach(println)
   }
 }
