@@ -47,6 +47,7 @@ class Converter {
     val values = RDDvalue.map(_._3)
 
     (rowIndex, colIndex, values, (numOFrow, numOFcol))
+
   }
 
   def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
