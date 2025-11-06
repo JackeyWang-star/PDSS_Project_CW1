@@ -22,7 +22,7 @@ class Converter {
     .set("spark.ui.enabled", "false")
   val sc: SparkContext = new SparkContext(conf)
 
-  def SMToCOO (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+  def SMToCOO (address: String): (RDD[(Int, Int, Double)], (Int, Int)) = {
     /*
     Row:       ,List(0, 0, 1, 3)
     Col:       ,List(0, 2, 1, 3)
@@ -42,11 +42,11 @@ class Converter {
           else None
         }
     }
-    val rowIndex = RDDvalue.map(_._1)
-    val colIndex = RDDvalue.map(_._2)
-    val values = RDDvalue.map(_._3)
+//    val rowIndex = RDDvalue.map(_._1)
+//    val colIndex = RDDvalue.map(_._2)
+//    val values = RDDvalue.map(_._3)
 
-    (rowIndex, colIndex, values, (numOFrow, numOFcol))
+    (RDDvalue, (numOFrow, numOFcol))
   }
 
   def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
@@ -55,20 +55,20 @@ class Converter {
     ColOffset: ,List(0, 1, 2, 3, 4, 4)
     Value:     ,List(4, 7, 9, 5)
      */
-    val (row, col, value, size) = SMToCOO(address)
-    val indexedRow = row.zipWithIndex().map{
-      case (r, i) => (i, r)
-    }
-    val indexedcol = col.zipWithIndex().map{
-      case (c, i) => (i, c)
-    }
-    val indexedValue = value.zipWithIndex().map{
-      case (v, i) => (i, v)
-    }
-    val RowCol = indexedRow.join(indexedcol)
-    val RowColValue = RowCol.join(indexedValue)
-    val cooRDD = RowColValue.map{
-      case (_,((r, c), v)) => (r, c, v)
+    val (coo, size) = SMToCOO(address)
+//    val indexedRow = row.zipWithIndex().map{
+//      case (r, i) => (i, r)
+//    }
+//    val indexedcol = col.zipWithIndex().map{
+//      case (c, i) => (i, c)
+//    }
+//    val indexedValue = value.zipWithIndex().map{
+//      case (v, i) => (i, v)
+//    }
+//    val RowCol = indexedRow.join(indexedcol)
+//    val RowColValue = RowCol.join(indexedValue)
+    val cooRDD = coo.map{
+      case (r, c, v) => (r, c, v)
     }
     val sortedRDD = cooRDD.sortBy{
       case (r, c, v) => (c, r)
@@ -76,7 +76,7 @@ class Converter {
 
     val rowIndexRDD = sortedRDD.map(_._1)
     val valueRDD = sortedRDD.map(_._3)
-    val CList = col.take(col.count().toInt).toList
+    val CList = coo.map(_._2).take(coo.map(_._2).count().toInt).toList
     val countMap = CList
       .groupBy(identity)
       .map { case (key, value) => (key, value.size) }
@@ -101,8 +101,8 @@ class Converter {
     Col:       ,List(0, 2, 1, 3)
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
-    val (row, col, value, size) = SMToCOO(address)
-    val RList = row.take(size._1).toList
+    val (coo, size) = SMToCOO(address)
+    val RList = coo.map(_._1).take(size._1).toList
     val countMap = RList
       .groupBy(identity)
       .map { case (key, value) => (key, value.size) }
@@ -118,7 +118,7 @@ class Converter {
     }._1
 
     val rowOffset = sc.parallelize(resultList)
-    (rowOffset, col, value, size)
+    (rowOffset, coo.map(_._2), coo.map(_._3), size)
   }
 
 //  def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
