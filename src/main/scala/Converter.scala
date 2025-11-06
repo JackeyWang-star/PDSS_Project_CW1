@@ -16,19 +16,12 @@ import org.apache.spark.{SparkConf, SparkContext}
 import scala.io.Source
 
 class Converter {
-  private val conf: SparkConf = new SparkConf()
-    .setAppName("CW1") // Set your application's name
-    .setMaster("local[*]") // Use all cores of the local machine
-    .set("spark.ui.enabled", "false")
-  val sc: SparkContext = new SparkContext(conf)
-
-  def SMToCOO (address: String): (RDD[(Int, Int, Double)], (Int, Int)) = {
+  def SMToCOO (matrix: RDD[String]): (RDD[(Int, Int, Double)], (Int, Int)) = {
     /*
     Row:       ,List(0, 0, 1, 3)
     Col:       ,List(0, 2, 1, 3)
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
-    val matrix = sc.textFile(address)
     val numOFrow = matrix.count().toInt
     val numOFcol = matrix.first().split(",").length
     val indexMatrix = matrix.zipWithIndex().map{
@@ -42,31 +35,16 @@ class Converter {
           else None
         }
     }
-//    val rowIndex = RDDvalue.map(_._1)
-//    val colIndex = RDDvalue.map(_._2)
-//    val values = RDDvalue.map(_._3)
-
     (RDDvalue, (numOFrow, numOFcol))
   }
 
-  def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+  def SMToCSC (matrix: RDD[String])(implicit sc: SparkContext): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     Row:       ,List(0, 1, 0, 3)
     ColOffset: ,List(0, 1, 2, 3, 4, 4)
     Value:     ,List(4, 7, 9, 5)
      */
-    val (coo, size) = SMToCOO(address)
-//    val indexedRow = row.zipWithIndex().map{
-//      case (r, i) => (i, r)
-//    }
-//    val indexedcol = col.zipWithIndex().map{
-//      case (c, i) => (i, c)
-//    }
-//    val indexedValue = value.zipWithIndex().map{
-//      case (v, i) => (i, v)
-//    }
-//    val RowCol = indexedRow.join(indexedcol)
-//    val RowColValue = RowCol.join(indexedValue)
+    val (coo, size) = SMToCOO(matrix)
     val cooRDD = coo.map{
       case (r, c, v) => (r, c, v)
     }
@@ -95,13 +73,13 @@ class Converter {
     (rowIndexRDD, colOffset, valueRDD, size)
   }
 
-  def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+  def SMToCSR (matrix: RDD[String])(implicit sc: SparkContext): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     RowOffset: ,List(0, 2, 3, 3, 4)
     Col:       ,List(0, 2, 1, 3)
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
-    val (coo, size) = SMToCOO(address)
+    val (coo, size) = SMToCOO(matrix)
     val RList = coo.map(_._1).take(size._1).toList
     val countMap = RList
       .groupBy(identity)
@@ -121,53 +99,11 @@ class Converter {
     (rowOffset, coo.map(_._2), coo.map(_._3), size)
   }
 
-//  def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
-//    /*
-//    sliceHigh = 2
-//    sliceNum:  ,List(0, 4, 6)
-//    Col:       ,List(0, 1, 2,-1,-1, 3)
-//    Value:     ,List(4, 7, 9, *, *, 5)
-//     */
-//    val source = Source.fromFile(address)
-//    val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
-//
-//    val numOFrows = matrix.length
-//    val numOFcol = matrix(0).length
-//    val numOFslice = (numOFrows + sliceHigh - 1) / sliceHigh
-//
-//    var values = List[Double]()
-//    var colIdices = List[Int]()
-//    var sliceNum = List[Int]()
-//    sliceNum ::= 0
-//
-//    for (i <- 0 until numOFslice){
-//      val start = i * sliceHigh
-//      val end = Math.min(start + sliceHigh, numOFrows)
-//      val slice = matrix.slice(start, end)
-//      val MaxWith = slice.map(_.count(_ != 0)).max
-//
-//      for (j <- slice){
-//        val nz = j.zipWithIndex.filter(_._1 != 0)
-//        val res = MaxWith - nz.length
-//        values = values ++ (nz.map(_._1) ++ List.fill(res)(0.0))
-//        colIdices = colIdices ++ (nz.map(_._2) ++ List.fill(res)(-1))
-//      }
-//      sliceNum ::= values.length
-//    }
-//
-//    println("Slice:     ", sliceNum.reverse)
-//    println("Col:       ", colIdices)
-//    println("Value:     ", values)
-//
-//    (sc.parallelize(sliceNum.reverse), sc.parallelize(colIdices), sc.parallelize(values), (numOFrows, numOFcol))
-//  }
-
-  def ReadSV (address: String): (RDD[Int], RDD[Double], Int) = {
+  def ReadSV (vector: RDD[String])(implicit sc: SparkContext): (RDD[Int], RDD[Double], Int) = {
     /*
     Idices:    ,List(1, 4, 5, 9)
     values:    ,List(1, 4, 7, 4)
     */
-    val vector = sc.textFile(address)
     val numOFrow = vector.count()
     val numOFcol = vector.first().split(",").length
     if (numOFrow != 1){
@@ -187,8 +123,7 @@ class Converter {
     ((vectorArr.map(_._1)), (vectorArr.map(_._2)), numOFcol)
   }
 
-  def ReadDV (address: String): (RDD[Double], Int) = {
-    val vector = sc.textFile(address)
+  def ReadDV (vector: RDD[String])(implicit sc: SparkContext): (RDD[Double], Int) = {
     val numOFrow = vector.count()
     if (numOFrow != 1){
       println("The input is not a vector.")
@@ -200,8 +135,7 @@ class Converter {
     (vectorRDD, numOFcol)
   }
 
-  def ReadDM (address: String): (RDD[Array[Double]], (Int, Int)) = {
-    val matrix = sc.textFile(address)
+  def ReadDM (matrix: RDD[String])(implicit sc: SparkContext): (RDD[Array[Double]], (Int, Int)) = {
     val numOFrow = matrix.count().toInt
     if (numOFrow == 0) {
       println("The input matrix is empty.")
