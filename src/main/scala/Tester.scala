@@ -14,7 +14,7 @@ object Tester {
     val sc = Con.sc
 
 //    val filePath1 = "Data/tesetCSC.csv"
-//    val filePath1 = "Data/SMConverter_test.csv"
+    val filePath1 = "Data/SMConverter_test.csv"
 //    println("The file path is: " + filePath1)
 //
 //    //测试COO转换
@@ -55,22 +55,22 @@ object Tester {
 //    println(size2)
 //
 //    //测试CSC转换
-//    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
-//    println("Read the Sparse matrix in file and saved in CSC form:")
-//    val Vnum3 = value3.count().toInt
-//    val VList3 = value3.take(Vnum3).toList
-//    val Rnum3 = row3.count().toInt
-//    val RList3 = row3.take(Rnum3).toList
-//    val Cnum3 = col3.count().toInt
-//    val CList3 = col3.take(Cnum3).toList
-//    println("row:   ")
-//    RList3.foreach(println)
-//    println("colOffset:   ")
-//    CList3.foreach(println)
-//    println("value:  ")
-//    VList3.foreach(println)
-//    println("The size of SM is:")
-//    println(size3)
+    val (row3, col3, value3, size3) = Con.SMToCSC(filePath1)
+    println("Read the Sparse matrix in file and saved in CSC form:")
+    val Vnum3 = value3.count().toInt
+    val VList3 = value3.take(Vnum3).toList
+    val Rnum3 = row3.count().toInt
+    val RList3 = row3.take(Rnum3).toList
+    val Cnum3 = col3.count().toInt
+    val CList3 = col3.take(Cnum3).toList
+    println("row:   ")
+    RList3.foreach(println)
+    println("colOffset:   ")
+    CList3.foreach(println)
+    println("value:  ")
+    VList3.foreach(println)
+    println("The size of SM is:")
+    println(size3)
 //
 //
 //    //测试SV读取
