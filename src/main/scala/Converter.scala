@@ -36,6 +36,7 @@ class Converter {
     (RDDvalue, (numOFrow, numOFcol))
   }
 
+  //修改后的CSC
   def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     Row:       ,List(0, 1, 0, 3)
@@ -128,7 +129,7 @@ class Converter {
 //    (rowIndexRDD, colOffset, valueRDD, size)
 //  }
 
-
+//修改后的CSR
   def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     RowOffset: ,List(0, 2, 3, 3, 4)

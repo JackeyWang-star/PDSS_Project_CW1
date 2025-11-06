@@ -1,6 +1,6 @@
 import org.apache.spark.{SparkConf, SparkContext}
 
-/*
+/* 新
 运行PDD时会输出很多红色日志，目前我还没找到把它关闭的方法。
 运行前需要注意JAVA CDK的版本，最好使用JAVA8或者JAVA11
 */
