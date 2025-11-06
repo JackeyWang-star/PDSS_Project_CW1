@@ -1,16 +1,3 @@
-/*
-SMToCOO (address: String): (RDD[Int], RDD[Int], RDD[Double])
-SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double])
-SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double])
-这三个方法包含了读取CSV文件并转换成COO，CSC，CSR这三种保存形式。结构会被保存在三个PDD中返回。
-
-def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double])
-这个方法是转换成SELL格式的方法，但是这个版本保存出来的结果并不正确，现在会按照row的先后顺序保存数据，但实际上应该按照col的顺序
-
-所有格式转换的方法已经被封装进Converter类中，使用时需要先创建Converter实例再调用方法。
-
- */
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import scala.io.Source
@@ -56,44 +43,91 @@ class Converter {
     Value:     ,List(4, 7, 9, 5)
      */
     val (coo, size) = SMToCOO(address)
-//    val indexedRow = row.zipWithIndex().map{
-//      case (r, i) => (i, r)
-//    }
-//    val indexedcol = col.zipWithIndex().map{
-//      case (c, i) => (i, c)
-//    }
-//    val indexedValue = value.zipWithIndex().map{
-//      case (v, i) => (i, v)
-//    }
-//    val RowCol = indexedRow.join(indexedcol)
-//    val RowColValue = RowCol.join(indexedValue)
-    val cooRDD = coo.map{
-      case (r, c, v) => (r, c, v)
-    }
-    val sortedRDD = cooRDD.sortBy{
-      case (r, c, v) => (c, r)
-    }
+    val (numRows, numCols) = size
 
-    val rowIndexRDD = sortedRDD.map(_._1)
-    val valueRDD = sortedRDD.map(_._3)
-    val CList = coo.map(_._2).take(coo.map(_._2).count().toInt).toList
-    val countMap = CList
-      .groupBy(identity)
-      .map { case (key, value) => (key, value.size) }
+    // 1. 对 COO RDD 按列索引排序 (CSC 格式的必要条件)
+    val sortedCOO = coo.sortBy { case (r, c, v) => (c, r) }.persist()
 
-    val numList: List[Int] = (0 until size._2).map { index =>
-      countMap.getOrElse(index, 0)
+    // 2. 分布式计算每列的非零元素个数
+    // (col, 1) -> reduceByKey -> (col, count_for_that_col)
+    val colCountsRDD = sortedCOO.map { case (_, c, _) => (c, 1) }
+      .reduceByKey(_ + _)
+
+    // 3. 安全地将小型的 "列计数" RDD 收集到驱动程序
+    // 这是一个 Map[Int, Int]，大小为 numCols，所以这是安全的
+    val colCountsMap = colCountsRDD.collectAsMap()
+
+    // 4. 在驱动程序上构建偏移量数组（处理 numCols 个元素）
+    val numList: List[Int] = (0 until numCols).map { index =>
+      colCountsMap.getOrElse(index, 0)
     }.toList
 
+    // 5. 计算前缀和 (Prefix Sum) 来创建偏移量
     val resultList = (0 :: numList).foldLeft((List.empty[Int], 0)){
       case ((offset, sum), current) =>
         val newsum = sum + current
         (offset :+ newsum, newsum)
     }._1
 
+    // 6. 将小的偏移量数组并行化回 RDD
     val colOffset = sc.parallelize(resultList)
+
+    // 7. 从已排序的 RDD 中提取行索引和值
+    val rowIndexRDD = sortedCOO.map(_._1)
+    val valueRDD = sortedCOO.map(_._3)
+
+    // 8. 清除缓存
+    sortedCOO.unpersist()
+
     (rowIndexRDD, colOffset, valueRDD, size)
   }
+
+//  def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+//    /*
+//    Row:       ,List(0, 1, 0, 3)
+//    ColOffset: ,List(0, 1, 2, 3, 4, 4)
+//    Value:     ,List(4, 7, 9, 5)
+//     */
+//    val (coo, size) = SMToCOO(address)
+////    val indexedRow = row.zipWithIndex().map{
+////      case (r, i) => (i, r)
+////    }
+////    val indexedcol = col.zipWithIndex().map{
+////      case (c, i) => (i, c)
+////    }
+////    val indexedValue = value.zipWithIndex().map{
+////      case (v, i) => (i, v)
+////    }
+////    val RowCol = indexedRow.join(indexedcol)
+////    val RowColValue = RowCol.join(indexedValue)
+//    val cooRDD = coo.map{
+//      case (r, c, v) => (r, c, v)
+//    }
+//    val sortedRDD = cooRDD.sortBy{
+//      case (r, c, v) => (c, r)
+//    }
+//
+//    val rowIndexRDD = sortedRDD.map(_._1)
+//    val valueRDD = sortedRDD.map(_._3)
+//    val CList = coo.map(_._2).take(coo.map(_._2).count().toInt).toList
+//    val countMap = CList
+//      .groupBy(identity)
+//      .map { case (key, value) => (key, value.size) }
+//
+//    val numList: List[Int] = (0 until size._2).map { index =>
+//      countMap.getOrElse(index, 0)
+//    }.toList
+//
+//    val resultList = (0 :: numList).foldLeft((List.empty[Int], 0)){
+//      case ((offset, sum), current) =>
+//        val newsum = sum + current
+//        (offset :+ newsum, newsum)
+//    }._1
+//
+//    val colOffset = sc.parallelize(resultList)
+//    (rowIndexRDD, colOffset, valueRDD, size)
+//  }
+
 
   def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
@@ -102,64 +136,69 @@ class Converter {
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
     val (coo, size) = SMToCOO(address)
-    val RList = coo.map(_._1).take(size._1).toList
-    val countMap = RList
-      .groupBy(identity)
-      .map { case (key, value) => (key, value.size) }
+    val (numRows, numCols) = size
 
-    val numList: List[Int] = (0 until size._1).map { index =>
-      countMap.getOrElse(index, 0)
+    // 1. 对 COO RDD 按行索引排序
+    val sortedCOO = coo.sortBy { case (r, c, v) => (r, c) }.persist()
+
+    // 2. 分布式计算每行的非零元素个数
+    // (row, 1) -> reduceByKey -> (row, count_for_that_row)
+    val rowCountsRDD = sortedCOO.map { case (r, _, _) => (r, 1) }
+      .reduceByKey(_ + _)
+
+    // 3. 安全地将小型的 "行计数" RDD 收集到驱动程序
+    //    这是一个 Map[Int, Int]，大小为 numRows，而不是 nnz，所以这是安全的
+    val rowCountsMap = rowCountsRDD.collectAsMap()
+
+    // 4. 在驱动程序上构建偏移量数组（现在是安全的，因为只处理 numRows 个元素）
+    val numList: List[Int] = (0 until numRows).map { index =>
+      rowCountsMap.getOrElse(index, 0)
     }.toList
 
+    // 5. 计算前缀和 (Prefix Sum) 来创建偏移量
     val resultList = (0 :: numList).foldLeft((List.empty[Int], 0)){
       case ((offset, sum), current) =>
         val newsum = sum + current
         (offset :+ newsum, newsum)
     }._1
 
+    // 6. 将小的偏移量数组并行化回 RDD
     val rowOffset = sc.parallelize(resultList)
-    (rowOffset, coo.map(_._2), coo.map(_._3), size)
+
+    // 7. 从已排序的 RDD 中提取列索引和值
+    val colRDD = sortedCOO.map(_._2)
+    val valueRDD = sortedCOO.map(_._3)
+
+    // 8. 清除缓存
+    sortedCOO.unpersist()
+
+    (rowOffset, colRDD, valueRDD, size)
   }
 
-//  def SMToSELL (address: String, sliceHigh: Int): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+//  def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
 //    /*
-//    sliceHigh = 2
-//    sliceNum:  ,List(0, 4, 6)
-//    Col:       ,List(0, 1, 2,-1,-1, 3)
-//    Value:     ,List(4, 7, 9, *, *, 5)
+//    RowOffset: ,List(0, 2, 3, 3, 4)
+//    Col:       ,List(0, 2, 1, 3)
+//    Value:     ,List(4.0, 9.0, 7.0, 5.0)
 //     */
-//    val source = Source.fromFile(address)
-//    val matrix = source.getLines().map(_.replace("\uFEFF", "").split(",").map(_.trim.toDouble)).toArray
+//    val (coo, size) = SMToCOO(address)
+//    val RList = coo.map(_._1).take(size._1).toList
+//    val countMap = RList
+//      .groupBy(identity)
+//      .map { case (key, value) => (key, value.size) }
 //
-//    val numOFrows = matrix.length
-//    val numOFcol = matrix(0).length
-//    val numOFslice = (numOFrows + sliceHigh - 1) / sliceHigh
+//    val numList: List[Int] = (0 until size._1).map { index =>
+//      countMap.getOrElse(index, 0)
+//    }.toList
 //
-//    var values = List[Double]()
-//    var colIdices = List[Int]()
-//    var sliceNum = List[Int]()
-//    sliceNum ::= 0
+//    val resultList = (0 :: numList).foldLeft((List.empty[Int], 0)){
+//      case ((offset, sum), current) =>
+//        val newsum = sum + current
+//        (offset :+ newsum, newsum)
+//    }._1
 //
-//    for (i <- 0 until numOFslice){
-//      val start = i * sliceHigh
-//      val end = Math.min(start + sliceHigh, numOFrows)
-//      val slice = matrix.slice(start, end)
-//      val MaxWith = slice.map(_.count(_ != 0)).max
-//
-//      for (j <- slice){
-//        val nz = j.zipWithIndex.filter(_._1 != 0)
-//        val res = MaxWith - nz.length
-//        values = values ++ (nz.map(_._1) ++ List.fill(res)(0.0))
-//        colIdices = colIdices ++ (nz.map(_._2) ++ List.fill(res)(-1))
-//      }
-//      sliceNum ::= values.length
-//    }
-//
-//    println("Slice:     ", sliceNum.reverse)
-//    println("Col:       ", colIdices)
-//    println("Value:     ", values)
-//
-//    (sc.parallelize(sliceNum.reverse), sc.parallelize(colIdices), sc.parallelize(values), (numOFrows, numOFcol))
+//    val rowOffset = sc.parallelize(resultList)
+//    (rowOffset, coo.map(_._2), coo.map(_._3), size)
 //  }
 
   def ReadSV (address: String): (RDD[Int], RDD[Double], Int) = {
