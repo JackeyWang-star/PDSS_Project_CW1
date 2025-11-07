@@ -3,19 +3,19 @@ import org.apache.spark.{SparkConf, SparkContext}
 import scala.io.Source
 
 class Converter {
-  private val conf: SparkConf = new SparkConf()
-    .setAppName("CW1") // Set your application's name
-    .setMaster("local[*]") // Use all cores of the local machine
-    .set("spark.ui.enabled", "false")
-  val sc: SparkContext = new SparkContext(conf)
+//  private val conf: SparkConf = new SparkConf()
+//    .setAppName("CW1") // Set your application's name
+//    .setMaster("local[*]") // Use all cores of the local machine
+//    .set("spark.ui.enabled", "false")
+//  val sc: SparkContext = new SparkContext(conf)
 
-  def SMToCOO (address: String): (RDD[(Int, Int, Double)], (Int, Int)) = {
+  def SMToCOO (matrix: RDD[String])(implicit sc: SparkContext): (RDD[(Int, Int, Double)], (Int, Int)) = {
     /*
     Row:       ,List(0, 0, 1, 3)
     Col:       ,List(0, 2, 1, 3)
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
-    val matrix = sc.textFile(address)
+//    val matrix = sc.textFile(address)
     val numOFrow = matrix.count().toInt
     val numOFcol = matrix.first().split(",").length
     val indexMatrix = matrix.zipWithIndex().map{
@@ -37,13 +37,13 @@ class Converter {
   }
 
   //修改后的CSC
-  def SMToCSC (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+  def SMToCSC (matrix: RDD[String])(implicit sc: SparkContext): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     Row:       ,List(0, 1, 0, 3)
     ColOffset: ,List(0, 1, 2, 3, 4, 4)
     Value:     ,List(4, 7, 9, 5)
      */
-    val (coo, size) = SMToCOO(address)
+    val (coo, size) = SMToCOO(matrix)
     val (numRows, numCols) = size
 
     // 1. 对 COO RDD 按列索引排序 (CSC 格式的必要条件)
@@ -130,13 +130,13 @@ class Converter {
 //  }
 
 //修改后的CSR
-  def SMToCSR (address: String): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
+  def SMToCSR (matrix: RDD[String])(implicit sc: SparkContext): (RDD[Int], RDD[Int], RDD[Double], (Int, Int)) = {
     /*
     RowOffset: ,List(0, 2, 3, 3, 4)
     Col:       ,List(0, 2, 1, 3)
     Value:     ,List(4.0, 9.0, 7.0, 5.0)
      */
-    val (coo, size) = SMToCOO(address)
+    val (coo, size) = SMToCOO(matrix)
     val (numRows, numCols) = size
 
     // 1. 对 COO RDD 按行索引排序
@@ -202,12 +202,12 @@ class Converter {
 //    (rowOffset, coo.map(_._2), coo.map(_._3), size)
 //  }
 
-  def ReadSV (address: String): (RDD[Int], RDD[Double], Int) = {
+  def ReadSV (vector: RDD[String])(implicit sc: SparkContext): (RDD[Int], RDD[Double], Int) = {
     /*
     Idices:    ,List(1, 4, 5, 9)
     values:    ,List(1, 4, 7, 4)
     */
-    val vector = sc.textFile(address)
+//    val vector = sc.textFile(address)
     val numOFrow = vector.count()
     val numOFcol = vector.first().split(",").length
     if (numOFrow != 1){
@@ -227,8 +227,8 @@ class Converter {
     ((vectorArr.map(_._1)), (vectorArr.map(_._2)), numOFcol)
   }
 
-  def ReadDV (address: String): (RDD[Double], Int) = {
-    val vector = sc.textFile(address)
+  def ReadDV (vector: RDD[String])(implicit sc: SparkContext): (RDD[Double], Int) = {
+//    val vector = sc.textFile(address)
     val numOFrow = vector.count()
     if (numOFrow != 1){
       println("The input is not a vector.")
@@ -240,8 +240,8 @@ class Converter {
     (vectorRDD, numOFcol)
   }
 
-  def ReadDM (address: String): (RDD[Array[Double]], (Int, Int)) = {
-    val matrix = sc.textFile(address)
+  def ReadDM (matrix:RDD[String])(implicit sc: SparkContext): (RDD[Array[Double]], (Int, Int)) = {
+//    val matrix = sc.textFile(address)
     val numOFrow = matrix.count().toInt
     if (numOFrow == 0) {
       println("The input matrix is empty.")
