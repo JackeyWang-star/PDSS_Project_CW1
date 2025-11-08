@@ -12,3 +12,5 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % "3.5.1" ,  // 核心库
   "org.apache.spark" %% "spark-sql" % "3.5.1"   // 如需SQL支持
 )
+
+libraryDependencies += "org.scala-lang.modules" %% "scala-swing" % "3.0.0"
