@@ -107,12 +107,12 @@ object RunnerFuncs extends Serializable {
 // ------------------------------ Runner 本体 ------------------------------
 class Runner {
 
-//  // Windows 兜底（winutils）
-//  private val isWin = System.getProperty("os.name").toLowerCase.contains("win")
-//  if (isWin) {
-//    val hh = sys.env.getOrElse("HADOOP_HOME", "C:\\hadoop")
-//    System.setProperty("hadoop.home.dir", hh)
-//  }
+  // Windows 兜底（winutils）
+  private val isWin = System.getProperty("os.name").toLowerCase.contains("win")
+  if (isWin) {
+    val hh = sys.env.getOrElse("HADOOP_HOME", "C:\\hadoop")
+    System.setProperty("hadoop.home.dir", hh)
+  }
 
   // Spark
   private val conf: SparkConf = new SparkConf()
@@ -128,7 +128,7 @@ class Runner {
   val Cal = new Calculator
   val Con = new Converter
 
-  // 主入口：保持你朋友的接口，返回字符串
+  // 主入口：返回字符串
   def Run(address1: String, address2: String): String = {
     import RunnerFuncs._
 
