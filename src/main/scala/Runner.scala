@@ -1,269 +1,185 @@
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.{HashPartitioner, SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
-import java.io._
+import scala.util.Try
+import scala.collection.mutable
 
-class Runner {
-  // 1. SC 和类在 Runner 内部创建
-  private val conf: SparkConf = new SparkConf()
-    .setAppName("CW1") // Set your application's name
-    .setMaster("local[*]") // Use all cores of the local machine
-    .set("spark.ui.enabled", "false")
+// ----------- 可序列化的函数集合：闭包只捕获这个对象，不会捕获 Runner.this -----------
+object RunnerFuncs extends Serializable {
 
-  // 2. [ 修复 ] 声明 sc 为 implicit，这样 Con 和 Cal 才能自动接收它
-  implicit val sc: SparkContext = new SparkContext(conf)
-
-  // 3. [ 修复 ] Con 和 Cal 现在会接收到隐式的 sc
-  val Cal = new Calculator
-  val Con = new Converter
-  val savelink = "result/result.text"
-
-  def Run (address1: String, address2: String): String = {
-    // 载入 RDDs
-    val SM_rdd = sc.textFile(address1)
-    val file_rdd = sc.textFile(address2)
-
-    // 检查文件2 (file_rdd) 的属性
-    val numOFrow = file_rdd.count().toInt
-    val numOFcol = file_rdd.first().split(",").length
-    val size = numOFrow * numOFcol
-
-    if (numOFrow == 1){ // 它是 向量 (Vector)
-      if (isS(file_rdd, size)){ // 它是 稀疏向量 (Sparse Vector)
-        println("Running SpM_SpSV (Sparse Matrix x Sparse Vector)...")
-
-        // [ 修复 ] 1: 调用新的 SMToJoinableByRow
-        val (matrixByRow, shape) = Con.SMToJoinableByRow(SM_rdd)
-        // [ 修复 ] 2: 传递 RDD[String]
-        val (svIndices, svValues, vecLength) = Con.ReadSV(file_rdd)
-        // [ 修复 ] 3: 调用新的 SpM_SpSV
-        val result = Cal.SpM_SpSV(matrixByRow, svIndices, svValues, shape, vecLength)
-
-        // [ 修复 ] 收集小向量结果
-        val resultString: String = result.collect().mkString(",")
-        printV(result)
-        return resultString
-      }
-      else { // 它是 稠密向量 (Dense Vector)
-        println("Running SpM_DV (Sparse Matrix x Dense Vector)...")
-
-        // [ 修复 ] 1: 调用 SMToJoinableByRow
-        val (matrixByRow, shape) = Con.SMToJoinableByRow(SM_rdd)
-        // [ 修复 ] 2: 传递 RDD[String]
-        val (vector, n) = Con.ReadDV(file_rdd)
-        // [ 修复 ] 3: 调用新的 SpM_DV
-        val result = Cal.SpM_DV(matrixByRow, vector, shape)
-
-        // [ 修复 ] 收集小向量结果
-        val resultString: String = result.collect().mkString(",")
-        printV(result)
-        return resultString
+  /** 只保留纯数字的 CSV 行（过滤掉 GUI 提示/注释等） */
+  def isNumericLine(line: String): Boolean = {
+    val it = line.split(",").iterator
+    var any = false; var ok = true
+    while (ok && it.hasNext) {
+      val s = it.next().trim
+      if (s.nonEmpty) {
+        if (Try(s.toDouble).isFailure) ok = false else any = true
       }
     }
-    if (numOFrow > 1){ // 它是 矩阵 (Matrix)
-      if (isS(file_rdd, size)){ // 它是 稀疏矩阵 (Sparse Matrix)
-        println("Running SpM_SpM (Sparse Matrix x Sparse Matrix)...")
-
-        // [ 修复 ] 1: A (CSR) 使用 JoinableByRow
-        val (a_matrixByRow, a_shape) = Con.SMToJoinableByRow(SM_rdd)
-        // [ 修复 ] 2: B (CSC) 使用 JoinableByCol
-        val (b_matrixByCol, b_shape) = Con.SMToJoinableByCol(file_rdd)
-        // [ 修复 ] 3: 调用新的 SpM_SpM
-        val result = Cal.SpM_SpM(a_matrixByRow, b_matrixByCol, a_shape, b_shape)
-
-        printM(result)
-        // [ 修复 ] 4: 使用安全的 saveCOOToString (见下方)
-        return saveCOOToString(result)
-      }
-      else { // 它是 稠密矩阵 (Dense Matrix)
-        println("Running SpM_SpDM (Sparse Matrix x Dense Matrix)...")
-
-        // [ 修复 ] 1: A (CSR) 使用 JoinableByRow
-        val (a_matrixByRow, a_shape) = Con.SMToJoinableByRow(SM_rdd)
-        // [ 修复 ] 2: 传递 RDD[String]
-        val (b_matrix, b_shape) = Con.ReadDM(file_rdd)
-        // [ 修复 ] 3: 调用新的 SpM_SpDM
-        val result = Cal.SpM_SpDM(a_matrixByRow, b_matrix, a_shape, b_shape)
-
-        printM(result)
-        // [ 修复 ] 4: 使用安全的 saveCOOToString (见下方)
-        return saveCOOToString(result)
-      }
-    }
-    return ""
+    any && ok
   }
 
-  // [ 修复 ] 修复了 isS 中的整型除法问题
-  def isS (matrix: RDD[String], size: Int): Boolean = {
-    // .sum() 返回 Double
-    val numOF_NON_zero = matrix.flatMap{
-      line =>
-        val element = line.split(",").map(_.toDouble)
-        element.map{
-          vale =>
-            if (vale != 0) 1.0 else 0.0 // 使用 Double
+  /** 稀疏性判定（忽略非数字 token） */
+  def isSparse(matrix: RDD[String]): Boolean = {
+    val (nnz, total) = matrix.mapPartitions { it =>
+      var nonZero = 0L; var count = 0L
+      it.foreach { line =>
+        val arr = line.split(","); var i = 0
+        while (i < arr.length) {
+          val s = arr(i).trim
+          if (s.nonEmpty) {
+            Try(s.toDouble).toOption.foreach { d =>
+              count += 1; if (d != 0.0) nonZero += 1
+            }
+          }
+          i += 1
         }
-    }.sum()
+      }
+      Iterator.single((nonZero, count))
+    }.reduce { case ((a1, a2), (b1, b2)) => (a1 + b1, a2 + b2) }
 
-    if (size == 0) return false // 避免除以零
-
-    val rate = numOF_NON_zero / size.toDouble
-    println(s"Sparsity rate (non-zero): $rate")
-    // 如果非零元素的比例低于 50%，则判断为稀疏
-    if (rate < 0.5){
-      true
-    }
-    else {
-      false
-    }
+    val rate = if (total == 0) 0.0 else nnz.toDouble / total.toDouble
+    println(f"[isS] nonzero rate = $rate%.4f , total=$total")
+    rate < 0.5
   }
 
-  def printV (Result: RDD[Double]) = {
-    // .collect() 对于小型的 *结果* 向量是允许的
-    val list = Result.collect()
-    println("Result Vector:")
-    println(s"[${list.mkString(",")}]")
+  // 向量 -> 单行 CSV（保证全局顺序）
+  def vectorToCsvLine(vec: RDD[Double]): String = {
+    val ordered: RDD[String] =
+      vec.zipWithIndex()                         // (v, i)
+        .map{ case (v,i) => (i, v) }
+        .sortByKey()                            // 全局有序
+        .map{ _._2.toString }
+
+    val onePart: RDD[String] =
+      ordered.coalesce(1, shuffle = true)       // 收到一个分区，保持顺序
+        .mapPartitions(it => Iterator.single(it.mkString(",")))
+
+    onePart.first()
   }
 
-  def printM (Result: RDD[(Int, Int, Double)]) = {
-    // .collect() 对于小型的 *测试* 矩阵结果是允许的
-    val list = Result.collect()
-    println("Result Matrix in COO:")
-    list.foreach(println)
-  }
+  // COO -> 稠密矩阵多行字符串（保证行的全局顺序）
+  def cooToDenseString(coo: RDD[(Int, Int, Double)],
+                       shape: (Int, Int))
+                      (implicit sc: SparkContext): String = {
+    val (numRows, numCols) = shape
+    val P    = sc.defaultParallelism
+    val part = new HashPartitioner(P)
 
-  // [ 修复 ] 替换了危险的 saveCOOAsMatrix
-  // 这个函数只返回 COO 列表的字符串表示。
-  // 它 *不会* 创建一个稠密的 Array，从而避免了 OOM。
-  // 这仍然使用了 .collect()，对于一个巨大的结果矩阵来说是危险的。
-  // 在 "生产" 代码中, 您应该使用 result.map(...).saveAsTextFile(...)
-  def saveCOOToString(cooRDD: RDD[(Int, Int, Double)]): String = {
-    // 警告：对于一个 *巨大* 的 *结果* 矩阵，.collect() 仍然会违反规定。
-    // 假设在这里用于测试/演示的矩阵结果很小。
-    val cooData = cooRDD.collect()
-    // 将 (i, j, v) 元组转换为字符串，每行一个
-    val matrixString = cooData.map { case (i, j, value) =>
-      s"($i, $j, $value)"
-    }.mkString("\n")
-    matrixString
+    val rows: RDD[(Int, (Int, Double))] =
+      coo.map { case (i, j, v) => (i, (j, v)) }
+
+    val rowMap: RDD[(Int, mutable.Map[Int, Double])] =
+      rows.partitionBy(part).combineByKey[mutable.Map[Int, Double]](
+        (cv: (Int, Double)) => { val m = mutable.Map[Int, Double](); m.update(cv._1, cv._2); m },
+        (m: mutable.Map[Int, Double], cv: (Int, Double)) => { m.update(cv._1, cv._2); m },
+        (m1: mutable.Map[Int, Double], m2: mutable.Map[Int, Double]) => {
+          if (m2.size > m1.size) { m2 ++= m1; m2 } else { m1 ++= m2; m1 }
+        }
+      )
+
+    val allRows: RDD[(Int, Unit)] =
+      sc.parallelize(0 until numRows, P).map(i => (i, ()))
+
+    val denseLinesSorted: RDD[String] =
+      allRows.leftOuterJoin(rowMap)
+        .sortByKey(numPartitions = P)            // 行号有序
+        .map { case (_, (_, mOpt)) =>
+          val m = mOpt.getOrElse(mutable.Map.empty[Int, Double])
+          val sb = new StringBuilder
+          var j = 0
+          while (j < numCols) {
+            if (j > 0) sb.append(", ")
+            sb.append(m.getOrElse(j, 0.0))
+            j += 1
+          }
+          sb.toString
+        }
+
+    val onePart: RDD[String] =
+      denseLinesSorted.coalesce(1, shuffle = true)
+        .mapPartitions(it => Iterator.single(it.mkString("\n")))
+
+    onePart.first()
   }
 }
 
-//import org.apache.spark.{SparkConf, SparkContext}
-//import org.apache.spark.rdd.RDD
-//import java.io._
-//
-//class Runner {
-//  val Cal = new Calculator
-//  val Con = new Converter
-//  private val conf: SparkConf = new SparkConf()
-//    .setAppName("CW1") // Set your application's name
-//    .setMaster("local[*]") // Use all cores of the local machine
-//    .set("spark.ui.enabled", "false")
-//  val sc: SparkContext = new SparkContext(conf)
-//  val savelink = "result/result.text"
-//
-//  def Run (address1: String, address2: String): String = {
-//    //address1是稀疏矩阵的路径，因此不会进行判断，只判断了address2的
-//    val SM = sc.textFile(address1)
-//    val file = sc.textFile(address2)
-//    val numOFrow = file.count().toInt
-//    val numOFcol = file.first().split(",").length
-//    val size = numOFrow * numOFcol
-//
-//    if (numOFrow == 1){
-//      if (isS(file, size)){
-//        val (rowOffset, colIndices, values, shape) = Con.SMToCSR(SM)(sc)
-//        val (svIndices, svValues, vecLength) = Con.ReadSV(file)(sc)
-//        val result = Cal.SpM_SpSV(rowOffset, colIndices, values, svIndices, svValues, shape, vecLength)(sc)
-//        val resultString: String = result.map(_.toString).reduce(_ + "," + _)
-//        printV(result)
-//        println("SpM_SpSV")
-//        return resultString
-//      }
-//      else {
-//        val (rowOffset, colIndices, values, shape) = Con.SMToCSR(SM)(sc)
-//        val (vector, n) = Con.ReadDV(file)(sc)
-//        val result = Cal.SpM_DV(rowOffset, colIndices, values, vector, shape)(sc)
-//        val resultString: String = result.map(_.toString).reduce(_ + "," + _)
-//        printV(result)
-//        println("SpM_DV")
-//        return resultString
-//      }
-//    }
-//    if (numOFrow > 1){
-//      if (isS(file, size)){
-//        val (rowOffset, colIndices, values, shape) = Con.SMToCSR(SM)(sc)
-//        val (row, colOffset, value, shape2) = Con.SMToCSC(file)(sc)
-//        val result = Cal.SpM_SpM(rowOffset, colIndices, values, colOffset, row, value,shape, shape2)(sc)
-//        val resultShape = (shape._1, shape2._2)
-//        printM(result)
-//        println("SpM_SpM")
-//        return saveCOOAsMatrix(result,resultShape)
-//      }
-//      else {
-//        val (rowOffset, colIndices, values, shape) = Con.SMToCSR(SM)(sc)
-//        val (matrix, shape2) = Con.ReadDM(file)(sc)
-//        val result = Cal.SpM_SpDM(rowOffset, colIndices, values, matrix, shape, shape2)(sc)
-//        val resultShape = (shape._1, shape2._2)
-//        printM(result)
-//        println("SpM_SpDM")
-//        return saveCOOAsMatrix(result,resultShape)
-//      }
-//    }
-//    return ""
+// ------------------------------ Runner 本体 ------------------------------
+class Runner {
+
+//  // Windows 兜底（winutils）
+//  private val isWin = System.getProperty("os.name").toLowerCase.contains("win")
+//  if (isWin) {
+//    val hh = sys.env.getOrElse("HADOOP_HOME", "C:\\hadoop")
+//    System.setProperty("hadoop.home.dir", hh)
 //  }
-//
-//  def isS (matrix: RDD[String], size: Int): Boolean = {
-//    val indexMatrix = matrix.zipWithIndex().map{
-//      case (line, rowindex) => (line, rowindex.toInt)
-//    }
-//    val numOFzero = matrix.flatMap{
-//      line =>
-//        val element = line.split(",").map(_.toDouble)
-//        element.map{
-//          vale =>
-//            if (vale != 0) 1 else 0
-//        }
-//    }.sum()
-//    val rate = numOFzero/size
-//    println(rate)
-//    if (rate < 0.5){
-//      true
-//    }
-//    else {
-//      false
-//    }
-//  }
-//  def printV (Result: RDD[Double]) = {
-//    val num = Result.count().toInt
-//    val List = Result.take(num).toList
-//    println("Result Vector:")
-//    List.foreach(println)
-//  }
-//  def printM (Result: RDD[(Int, Int, Double)]) = {
-//    val num = Result.count().toInt
-//    val List = Result.take(num).toList
-//    println("Result Matrix in COO:")
-//    List.foreach(println)
-//  }
-//  def saveCOOAsMatrix(cooRDD: RDD[(Int, Int, Double)], shape: (Int, Int)): String = {
-//
-//    // 1. 创建全零矩阵
-//    val matrix = Array.ofDim[String](shape._1, shape._2)
-//    for (i <- 0 until shape._1; j <- 0 until shape._2) {
-//      matrix(i)(j) = "0"
-//    }
-//
-//    // 2. 收集COO数据并填充矩阵
-//    val cooData = cooRDD.collect()
-//    cooData.foreach { case (i, j, value) =>
-//      if (i < shape._1 && j < shape._2) {
-//        matrix(i)(j) = f"$value%.1f"
-//      }
-//    }
-//
-//    // 3. 转换为字符串并保存
-//    val matrixString = matrix.map(_.mkString(", ")).mkString("\n")
-//    matrixString
-//  }
-//}
+
+  // Spark
+  private val conf: SparkConf = new SparkConf()
+    .setAppName("CW1")
+    .setMaster("local[*]")
+    .set("spark.ui.enabled", "false")
+    .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+
+  implicit val sc: SparkContext = new SparkContext(conf)
+  sc.setLogLevel("WARN")
+
+  // 组件（放在 sc 之后）
+  val Cal = new Calculator
+  val Con = new Converter
+
+  // 主入口：保持你朋友的接口，返回字符串
+  def Run(address1: String, address2: String): String = {
+    import RunnerFuncs._
+
+    val SMraw   = sc.textFile(address1)
+    val fileraw = sc.textFile(address2)
+
+    // 过滤非数字行（不要用类方法，避免捕获 this）
+    val SM   = SMraw.filter(RunnerFuncs.isNumericLine _)
+    val file = fileraw.filter(RunnerFuncs.isNumericLine _)
+
+    val numRowsRight = file.count().toInt
+    if (numRowsRight == 0) return ""
+
+    val numColsRight = file.first().split(",").length
+
+    if (numRowsRight == 1) {
+      // ------- A · x -------
+      if (isSparse(file)) {
+        val (csrByRow, aShape)                = Con.SMToJoinableByRow(SM)
+        val (svIdx, svVal, vlen)              = Con.ReadSV(file)
+        require(aShape._2 == vlen, s"A.cols=${aShape._2}, |x|=$vlen")
+        val y: RDD[Double] = Cal.SpM_SpSV(csrByRow, svIdx, svVal, aShape, vlen)
+        println("SpM_SpSV")
+        vectorToCsvLine(y)
+      } else {
+        val (csrByRow, aShape) = Con.SMToJoinableByRow(SM)
+        val (dv, vlen)         = Con.ReadDV(file)
+        require(aShape._2 == vlen, s"A.cols=${aShape._2}, |x|=$vlen")
+        val y: RDD[Double] = Cal.SpM_DV(csrByRow, dv, aShape)
+        println("SpM_DV")
+        vectorToCsvLine(y)
+      }
+    } else {
+      // ------- A · B -------
+      if (isSparse(file)) {
+        val (a_byRow, aShape) = Con.SMToJoinableByRow(SM)
+        val (b_byCol, bShape) = Con.SMToJoinableByCol(file)
+        require(aShape._2 == bShape._1,
+          s"A.cols=${aShape._2} must equal B.rows=${bShape._1}")
+        val c: RDD[(Int, Int, Double)] = Cal.SpM_SpM(a_byRow, b_byCol, aShape, bShape)
+        println("SpM_SpM")
+        cooToDenseString(c, (aShape._1, bShape._2))
+      } else {
+        val (a_byRow, aShape) = Con.SMToJoinableByRow(SM)
+        val (bDM, bShape)     = Con.ReadDM(file)
+        require(aShape._2 == bShape._1,
+          s"A.cols=${aShape._2} must equal B.rows=${bShape._1}")
+        val c: RDD[(Int, Int, Double)] = Cal.SpM_SpDM(a_byRow, bDM, aShape, bShape)
+        println("SpM_SpDM")
+        cooToDenseString(c, (aShape._1, bShape._2))
+      }
+    }
+  }
+}
