@@ -49,33 +49,41 @@ class Converter(implicit sc: SparkContext) {
   def ReadSV (vector: RDD[String]): (RDD[Int], RDD[Double], Int) = {
     val numOFrow = vector.count()
     val numOFcol = vector.first().split(",").length
-    if (numOFrow != 1){
+    if (numOFrow == 0){
+      println("The input is empty.")
+      return (sc.parallelize(List.empty[Int]), sc.parallelize(List.empty[Double]), 0)
+    }
+    if (numOFcol != 1){
       println("The input is not a vector.")
       return (sc.parallelize(List.empty[Int]), sc.parallelize(List.empty[Double]), 0)
     }
-    val vectorArr = vector.map{
-      values =>
-        val ele = values.split(",").map(_.toDouble)
-        val nonele = for {
-          index <- ele.indices
-          value = ele(index)
-          if value != 0.0
-        } yield (index, value)
-        nonele
-    }.flatMap(identity)
-    ((vectorArr.map(_._1)), (vectorArr.map(_._2)), numOFcol)
+    val vectorArr = vector.zipWithIndex().map{
+      case (v, i) =>
+        val dv = v.trim.toDouble
+        (i.toInt, dv)
+    }.filter{
+      case (i, v) =>
+        v != 0
+    }
+    (vectorArr.map(_._1), vectorArr.map(_._2), numOFrow.toInt)
   }
 
   def ReadDV (vector: RDD[String]): (RDD[Double], Int) = {
     val numOFrow = vector.count()
-    if (numOFrow != 1){
+    val numOFcol = vector.first().split(",").length
+    if (numOFrow == 0){
+      println("The input is empty.")
+      return (sc.parallelize(List.empty[Double]), 0)
+    }
+    if (numOFcol != 1){
       println("The input is not a vector.")
       return (sc.parallelize(List.empty[Double]), 0)
     }
-    val vectorArr = vector.first().split(",").map(_.toDouble)
-    val vectorRDD = sc.parallelize(vectorArr)
-    val numOFcol = vectorArr.length
-    (vectorRDD, numOFcol)
+    val vectorArr = vector.map{
+      case v =>
+        (v.trim.toDouble)
+    }
+    (vectorArr, numOFrow.toInt)
   }
 
   def ReadDM (matrix:RDD[String]): (RDD[Array[Double]], (Int, Int)) = {

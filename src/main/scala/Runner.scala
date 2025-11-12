@@ -243,7 +243,7 @@ class Runner {
 
     val numColsRight = file.first().split(",").length
 
-    if (numRowsRight == 1) {
+    if (numColsRight == 1) {
       // ------- A · x -------
       if (isSparse(file)) {
         val (csrByRow, aShape)                = Con.SMToJoinableByRow(SM)
@@ -255,7 +255,9 @@ class Runner {
       } else {
         val (csrByRow, aShape) = Con.SMToJoinableByRow(SM)
         val (dv, vlen)         = Con.ReadDV(file)
+        println("b")
         require(aShape._2 == vlen, s"A.cols=${aShape._2}, |x|=$vlen")
+        println("a")
         val y: RDD[Double] = Cal.SpM_DV(csrByRow, dv, aShape)
         println("SpM_DV")
         RunnerFuncs.vectorToCsvLine(y)
